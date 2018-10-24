@@ -300,7 +300,11 @@ func (c *Conn) ExecContext(ctx context.Context, query string, argsV []driver.Nam
 
 	args := namedValueToInterface(argsV)
 
-	commandTag, err := c.conn.ExecEx(ctx, query, nil, args...)
+	opts := pgx.QueryExOptions{}
+	commandTag, err := c.conn.ExecEx(ctx, query, &opts, args...)
+	if opts.Retryable && !c.conn.IsAlive() {
+		return nil, driver.ErrBadConn
+	}
 	return driver.RowsAffected(commandTag.RowsAffected()), err
 }
 
@@ -344,8 +348,12 @@ func (c *Conn) QueryContext(ctx context.Context, query string, argsV []driver.Na
 		return c.queryPreparedContext(ctx, "", argsV)
 	}
 
-	rows, err := c.conn.QueryEx(ctx, query, nil, namedValueToInterface(argsV)...)
+	opts := pgx.QueryExOptions{}
+	rows, err := c.conn.QueryEx(ctx, query, &opts, namedValueToInterface(argsV)...)
 	if err != nil {
+		if opts.Retryable && !c.conn.IsAlive() {
+			return nil, driver.ErrBadConn
+		}
 		return nil, err
 	}
 
@@ -376,8 +384,12 @@ func (c *Conn) queryPreparedContext(ctx context.Context, name string, argsV []dr
 
 	args := namedValueToInterface(argsV)
 
-	rows, err := c.conn.QueryEx(ctx, name, nil, args...)
+	opts := pgx.QueryExOptions{}
+	rows, err := c.conn.QueryEx(ctx, name, &opts, args...)
 	if err != nil {
+		if opts.Retryable && !c.conn.IsAlive() {
+			return nil, driver.ErrBadConn
+		}
 		return nil, err
 	}
 

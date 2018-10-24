@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"reflect"
 	"time"
 
@@ -365,6 +366,7 @@ type QueryExOptions struct {
 	ResultFormatCodes []int16
 
 	SimpleProtocol bool
+	Retryable      bool
 }
 
 func (c *Conn) QueryEx(ctx context.Context, sql string, options *QueryExOptions, args ...interface{}) (rows *Rows, err error) {
@@ -374,11 +376,21 @@ func (c *Conn) QueryEx(ctx context.Context, sql string, options *QueryExOptions,
 	err = c.waitForPreviousCancelQuery(ctx)
 	if err != nil {
 		rows.fatal(err)
+		if options != nil && !options.Retryable {
+			if _, is := err.(net.Error); is {
+				options.Retryable = true
+			}
+		}
 		return rows, err
 	}
 
 	if err := c.ensureConnectionReadyForQuery(); err != nil {
 		rows.fatal(err)
+		if options != nil && !options.Retryable {
+			if _, is := err.(net.Error); is {
+				options.Retryable = true
+			}
+		}
 		return rows, err
 	}
 
@@ -454,6 +466,11 @@ func (c *Conn) QueryEx(ctx context.Context, sql string, options *QueryExOptions,
 		ps, err = c.prepareEx("", sql, nil)
 		if err != nil {
 			rows.fatal(err)
+			if options != nil && !options.Retryable {
+				if _, is := err.(net.Error); is {
+					options.Retryable = true
+				}
+			}
 			return rows, rows.err
 		}
 	}

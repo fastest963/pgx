@@ -1704,6 +1704,9 @@ func doCancel(c *Conn) error {
 // https://www.postgresql.org/docs/current/static/protocol-flow.html#AEN112861
 func (c *Conn) cancelQuery() {
 	if err := c.conn.SetDeadline(time.Now()); err != nil {
+		if c.shouldLog(LogLevelError) {
+			c.log(LogLevelError, "error setting deadline in cancelQuery", map[string]interface{}{"err": err})
+		}
 		c.Close() // Close connection if unable to set deadline
 		return
 	}
@@ -1736,6 +1739,11 @@ func (c *Conn) Ping(ctx context.Context) error {
 func (c *Conn) ExecEx(ctx context.Context, sql string, options *QueryExOptions, arguments ...interface{}) (CommandTag, error) {
 	err := c.waitForPreviousCancelQuery(ctx)
 	if err != nil {
+		if options != nil && !options.Retryable {
+			if _, is := err.(net.Error); is {
+				options.Retryable = true
+			}
+		}
 		return "", err
 	}
 
@@ -1779,6 +1787,11 @@ func (c *Conn) execEx(ctx context.Context, sql string, options *QueryExOptions, 
 		}
 	} else if options != nil && len(options.ParameterOIDs) > 0 {
 		if err := c.ensureConnectionReadyForQuery(); err != nil {
+			if options != nil && !options.Retryable {
+				if _, is := err.(net.Error); is {
+					options.Retryable = true
+				}
+			}
 			return "", err
 		}
 
@@ -1802,6 +1815,11 @@ func (c *Conn) execEx(ctx context.Context, sql string, options *QueryExOptions, 
 				var err error
 				ps, err = c.prepareEx("", sql, nil)
 				if err != nil {
+					if options != nil && !options.Retryable {
+						if _, is := err.(net.Error); is {
+							options.Retryable = true
+						}
+					}
 					return "", err
 				}
 			}
